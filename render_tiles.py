@@ -12,13 +12,16 @@ from games import Game, PRESETS
 
 # --- Settings ---------------------------------------------------------------
 
-GAME = Game.SLY2
-MAP = "paris"            # name of the output folder under tiles/
+GAME = Game.SLY4
+MAP = "japan"            # name of the output folder under tiles/
 
 # Inclusive block ranges. Rows go down the image, columns go right.
 # Top-down in Sly 1-3 that's rows = +X, columns = +Y.
-ROWS = (0, 0)
-COLS = (0, 0)
+ROWS = (-12, 13)
+COLS = (11, 17)
+# Render only these blocks instead of ROWS x COLS, e.g. build_map.py's "Missing blocks found"
+# list pasted between the brackets: [(1,2),(3,4)]. None = use ROWS and COLS.
+BLOCKS = None
 
 # None = use the game's preset from games.py
 FOV = None               # degrees
@@ -26,7 +29,7 @@ DISTANCE = None          # camera distance from the map plane
 STEP = None              # world units per 370 px crop
 AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
 
-CAPTURE_DEVICE = 3      # OpenCV device index of the OBS Virtual Camera
+CAPTURE_DEVICE = 1      # OpenCV device index of the OBS Virtual Camera
 CAPTURE_WIDTH, CAPTURE_HEIGHT = 1280, 720
 
 # ----------------------------------------------------------------------------
@@ -40,9 +43,12 @@ SETTLE_TIMEOUT = 3.0     # s to wait for a new, still frame before using the lat
 CHANGED_DIFF = 2.0       # mean pixel difference that counts as "the view moved"
 STABLE_DIFF = 1.0        # mean pixel difference that counts as "the view is still"
 STABLE_FRAMES = 3        # consecutive still frames needed before a frame is used
-UNCHANGED_ACCEPT = 0.5   # s the view may look identical to the last shot (void, water) before it's used; 0 = off
+# s the view may look identical to the last shot (void, water) before it's used.
+# 0 = don't wait for the view to change at all, only for it to hold still. None = always wait for a change.
+UNCHANGED_ACCEPT = 0
 BUFFERED_READ = 0.01     # s; a read faster than this came from the capture buffer, not a new frame
 SET_RETRIES = 5
+START_DELAY = 0.5        # s to wait at the first block's position before the first capture
 
 
 def resolve_settings(frame_height):
@@ -140,7 +146,7 @@ class Renderer:
         time.sleep(SETTLE_DELAY)
         self.drain_buffer()
         start = time.time()
-        changed = self.prev_crop is None
+        changed = self.prev_crop is None or UNCHANGED_ACCEPT == 0
         last = None
         still = 0
         unchanged_since = start
@@ -151,7 +157,7 @@ class Renderer:
                 changed = diff > CHANGED_DIFF
                 if diff >= STABLE_DIFF:
                     unchanged_since = time.time()
-                elif UNCHANGED_ACCEPT > 0 and time.time() - unchanged_since >= UNCHANGED_ACCEPT:
+                elif UNCHANGED_ACCEPT is not None and time.time() - unchanged_since >= UNCHANGED_ACCEPT:
                     # The clock is frozen, so a view that stays identical to the last shot
                     # most likely just looks the same from here
                     break
@@ -215,6 +221,10 @@ def main():
         renderer = Renderer(capture)
         total_blocks = len(blocks_to_render)
         print(f"Total blocks to render: {total_blocks}")
+        if blocks_to_render:
+            # Give the game time to load and draw the first view before anything is captured
+            renderer.move_to_block(*blocks_to_render[0])
+            time.sleep(START_DELAY)
         start_time = time.time()
         block_count = 0
         for block in blocks_to_render:

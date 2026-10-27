@@ -24,6 +24,6 @@ PRESETS = {
     Game.SLY1: Preset(fov=0.1146, distance=500000, step=510),
     Game.SLY2: Preset(fov=0.1146, distance=500000, step=510),
     Game.SLY3: Preset(fov=0.1146, distance=500000, step=510),
-    Game.SLY4: Preset(fov=0.1146, distance=500000, step=510),
+    Game.SLY4: Preset(fov=0.112, distance=5000, step=5),
     Game.HACKPACK: Preset(fov=0.1146, distance=500000, step=510),
 }
