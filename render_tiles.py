@@ -17,8 +17,8 @@ MAP = "japan"            # name of the output folder under tiles/
 
 # Inclusive block ranges. Rows go down the image, columns go right.
 # Top-down in Sly 1-3 that's rows = +X, columns = +Y.
-ROWS = (-12, 13)
-COLS = (11, 17)
+ROWS = (-13, 13)
+COLS = (11, 19)
 # Render only these blocks instead of ROWS x COLS, e.g. build_map.py's "Missing blocks found"
 # list pasted between the brackets: [(1,2),(3,4)]. None = use ROWS and COLS.
 BLOCKS = None
@@ -38,16 +38,16 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 TILES_DIR = os.path.join(ROOT, 'tiles')
 
 CROP = 370               # px taken from the centre of each frame; a tile is 2x2 crops
-SETTLE_DELAY = 0.1       # s to wait after the API confirms the move before reading frames
-SETTLE_TIMEOUT = 3.0     # s to wait for a new, still frame before using the latest one
+SETTLE_DELAY = 0.2       # s to wait after the API confirms the move before reading frames
+SETTLE_TIMEOUT = 1.0     # s to wait for a new, still frame before using the latest one
 CHANGED_DIFF = 2.0       # mean pixel difference that counts as "the view moved"
 STABLE_DIFF = 1.0        # mean pixel difference that counts as "the view is still"
 STABLE_FRAMES = 3        # consecutive still frames needed before a frame is used
 # s the view may look identical to the last shot (void, water) before it's used.
 # 0 = don't wait for the view to change at all, only for it to hold still. None = always wait for a change.
-UNCHANGED_ACCEPT = 0
+UNCHANGED_ACCEPT = 0.5
 BUFFERED_READ = 0.01     # s; a read faster than this came from the capture buffer, not a new frame
-SET_RETRIES = 5
+SET_RETRIES = 3
 START_DELAY = 0.5        # s to wait at the first block's position before the first capture
 
 
