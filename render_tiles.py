@@ -26,7 +26,7 @@ DISTANCE = None          # camera distance from the map plane
 STEP = None              # world units per 370 px crop
 AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
 
-CAPTURE_DEVICE = 3
+CAPTURE_DEVICE = 3      # OpenCV device index of the OBS Virtual Camera
 CAPTURE_WIDTH, CAPTURE_HEIGHT = 1280, 720
 
 # ----------------------------------------------------------------------------
@@ -119,7 +119,7 @@ class Renderer:
     def read_crop(self):
         ok, frame = self.capture.read()
         if not ok:
-            raise RuntimeError("Capture device returned no frame")
+            raise RuntimeError("Capture device returned no frame (is the OBS Virtual Camera running?)")
         cy, cx = frame.shape[0] // 2, frame.shape[1] // 2
         return frame[cy - CROP // 2:cy + CROP // 2, cx - CROP // 2:cx + CROP // 2]
 

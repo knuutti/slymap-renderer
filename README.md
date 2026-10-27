@@ -1,8 +1,8 @@
 # slymap-renderer
 
 Renders map images of Sly Cooper levels. The game's free camera is moved block by block
-through SluMAN's camera script API, each view is captured from a capture card, and the
-tiles are stitched into one large map.
+through SluMAN's camera script API, each view is captured from the OBS Virtual Camera with
+OpenCV, and the tiles are stitched into one large map.
 
 ## Setup
 
@@ -16,7 +16,10 @@ Outside the code:
   Practice window is open.
 - On RPCS3, Sly 3 and Sly 4 / Hackpack need the **Interpreter** PPU decoder for the camera
   hook. Without it Sly 3's camera flickers, which spoils captures.
-- Capture device at index `3`, 1280x720 (`CAPTURE_DEVICE` in `render_tiles.py`).
+- **OBS Virtual Camera** running with the game as its source, output 1280x720. OpenCV opens it
+  by device index (`CAPTURE_DEVICE = 3` in `render_tiles.py`); the index can change when other
+  cameras are added, so check it if the wrong source is captured. Keep overlays out of the
+  frame centre, as they'd end up in the tiles.
 
 ## Usage
 
