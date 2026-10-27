@@ -1,0 +1,68 @@
+# slymap-renderer
+
+Renders map images of Sly Cooper levels. The game's free camera is moved block by block
+through SluMAN's camera script API, each view is captured from a capture card, and the
+tiles are stitched into one large map.
+
+## Setup
+
+```
+pip install -r requirements.txt
+```
+
+Outside the code:
+- **SluMAN** attached to the game (PS3 or RPCS3), in **Practice Mode**, with
+  **Script API on 127.0.0.1:9675** ticked on the Camera tab. The API only runs while the
+  Practice window is open.
+- On RPCS3, Sly 3 and Sly 4 / Hackpack need the **Interpreter** PPU decoder for the camera
+  hook. Without it Sly 3's camera flickers, which spoils captures.
+- Capture device at index `3`, 1280x720 (`CAPTURE_DEVICE` in `render_tiles.py`).
+
+## Usage
+
+1. **Render tiles**: edit the settings at the top of `render_tiles.py`:
+
+   | Setting | |
+   |---|---|
+   | `GAME` | `Game.SLY1` ... `Game.HACKPACK`; picks the preset in `games.py` |
+   | `MAP` | Output folder name under `tiles/` |
+   | `ROWS`, `COLS` | Inclusive block ranges. Rows go down the image, columns right |
+   | `FOV`, `DISTANCE`, `STEP`, `AXIS` | Optional overrides of the preset (`None` = preset) |
+
+   Then run `python render_tiles.py`. Each block is a 740x740 image (2x2 crops of 370 px)
+   saved at `tiles/<map>/<map>_block_<row>_<col>.png`. The HUD is hidden and fog turned off
+   while rendering; both are restored and the free camera turned off at the end.
+
+2. **Stitch map**: set `MAP` in `build_map.py` and run `python build_map.py`. The block range
+   and tile size come from the tile files. Output goes to `complete_maps/`: `<map>.png`,
+   `<map>_small.png` (1/4 size) and `<map>_xsmall.png` (1/20 size).
+
+`tiles/` and `complete_maps/` are git-ignored and only kept locally.
+
+## Views
+
+`AXIS` is the world axis the camera sits back along, `DISTANCE` away from the map plane
+through the origin:
+
+- **Top-down** (`AXIS = None`, the game's up axis): pitch -90. Sly 1-3 have Z up, so rows are
+  +X and columns +Y, as in the existing tiles. Sly 4 / Hackpack have Y up.
+- **Side view** (`AXIS` a horizontal axis): pitch 0, looking along +`AXIS`, rows going down.
+
+In Sly 4 / Hackpack the camera's far distance is set to `2 * DISTANCE` so the map isn't clipped.
+
+## Presets and calibration
+
+`games.py` holds each game's default `fov` (degrees), `distance` and `step` (world units one
+370 px crop covers). Sly 2's values (`fov` 0.1146 = 0.002 rad, `distance` 500000, `step` 510)
+match the existing tiles; the other games use the same values until calibrated.
+
+If `step` is left out, or `FOV` / `DISTANCE` are overridden in the script, it's worked out as
+`2 * distance * tan(fov / 2) * 370 / 720`, assuming the API's fov is vertical.
+
+To calibrate a game, move the camera to a block without capturing:
+
+```
+python render_tiles.py preview <row> <col>
+```
+
+then check that neighbouring crops line up (adjust `step`) and the orientation is right.

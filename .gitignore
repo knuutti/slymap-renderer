@@ -1,0 +1,10 @@
+# Rendered tiles and stitched maps (kept local, ~3 GB)
+tiles/
+complete_maps/
+*.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
