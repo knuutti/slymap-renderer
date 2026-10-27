@@ -35,10 +35,13 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 TILES_DIR = os.path.join(ROOT, 'tiles')
 
 CROP = 370               # px taken from the centre of each frame; a tile is 2x2 crops
-SETTLE_DELAY = 0.1       # s to wait after moving the camera before reading frames
-SETTLE_TIMEOUT = 2.0     # s to wait for a new, still frame before using the latest one
+SETTLE_DELAY = 0.1       # s to wait after the API confirms the move before reading frames
+SETTLE_TIMEOUT = 3.0     # s to wait for a new, still frame before using the latest one
 CHANGED_DIFF = 2.0       # mean pixel difference that counts as "the view moved"
 STABLE_DIFF = 1.0        # mean pixel difference that counts as "the view is still"
+STABLE_FRAMES = 3        # consecutive still frames needed before a frame is used
+UNCHANGED_ACCEPT = 0.5   # s the view may look identical to the last shot (void, water) before it's used; 0 = off
+BUFFERED_READ = 0.01     # s; a read faster than this came from the capture buffer, not a new frame
 SET_RETRIES = 5
 
 
@@ -123,18 +126,39 @@ class Renderer:
         cy, cx = frame.shape[0] // 2, frame.shape[1] // 2
         return frame[cy - CROP // 2:cy + CROP // 2, cx - CROP // 2:cx + CROP // 2]
 
+    def drain_buffer(self):
+        """Throw away frames the capture backend buffered before the camera moved."""
+        for _ in range(30):
+            start = time.time()
+            if not self.capture.grab():
+                break
+            if time.time() - start > BUFFERED_READ:
+                break  # had to wait for a fresh frame, so the buffer is empty
+
     def settled_crop(self):
-        """Wait until the view differs from the last shot and then holds still for a frame."""
+        """Wait until the view differs from the last shot and then holds still for a few frames."""
         time.sleep(SETTLE_DELAY)
+        self.drain_buffer()
         start = time.time()
         changed = self.prev_crop is None
         last = None
+        still = 0
+        unchanged_since = start
         while True:
             crop = self.read_crop()
             if not changed:
-                changed = np.mean(cv.absdiff(crop, self.prev_crop)) > CHANGED_DIFF
-            elif last is not None and np.mean(cv.absdiff(crop, last)) < STABLE_DIFF:
-                break
+                diff = np.mean(cv.absdiff(crop, self.prev_crop))
+                changed = diff > CHANGED_DIFF
+                if diff >= STABLE_DIFF:
+                    unchanged_since = time.time()
+                elif UNCHANGED_ACCEPT > 0 and time.time() - unchanged_since >= UNCHANGED_ACCEPT:
+                    # The clock is frozen, so a view that stays identical to the last shot
+                    # most likely just looks the same from here
+                    break
+            elif last is not None:
+                still = still + 1 if np.mean(cv.absdiff(crop, last)) < STABLE_DIFF else 0
+                if still >= STABLE_FRAMES:
+                    break
             if time.time() - start > SETTLE_TIMEOUT:
                 # Flat areas (water, void) can look the same from shot to shot
                 print("  Frame didn't settle, using the latest one")
@@ -158,7 +182,8 @@ class Renderer:
 
 def start_session():
     for request, call in (("Hide HUD", lambda: freecam_api.set_hud(True)),
-                          ("No fog", lambda: freecam_api.set_fog(True))):
+                          ("No fog", lambda: freecam_api.set_fog(True)),
+                          ("Freeze clock", lambda: freecam_api.set_clock(True))):
         try:
             call()
         except ApiError as e:
@@ -167,7 +192,7 @@ def start_session():
 
 def end_session():
     for call in (lambda: freecam_api.set_hud(False), lambda: freecam_api.set_fog(False),
-                 freecam_api.camera_off):
+                 lambda: freecam_api.set_clock(False), freecam_api.camera_off):
         try:
             call()
         except ApiError as e:
@@ -180,7 +205,10 @@ def main():
     capture.set(cv.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
     capture.set(cv.CAP_PROP_BUFFERSIZE, 0)
 
-    blocks_to_render = [(x, y) for x in range(ROWS[0], ROWS[1] + 1) for y in range(COLS[0], COLS[1] + 1)]
+    if BLOCKS is not None:
+        blocks_to_render = list(BLOCKS)
+    else:
+        blocks_to_render = [(x, y) for x in range(ROWS[0], ROWS[1] + 1) for y in range(COLS[0], COLS[1] + 1)]
 
     start_session()
     try:
@@ -196,7 +224,7 @@ def main():
             elapsed_time = time.time() - start_time
             print(f"Progress: {block_count}/{total_blocks} blocks rendered. Estimated time left: {((elapsed_time / block_count) * (total_blocks - block_count)) / 60:.2f} minutes")
     finally:
-        end_session()
+        # end_session()
         capture.release()
 
 

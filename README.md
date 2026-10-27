@@ -33,8 +33,9 @@ Outside the code:
    | `FOV`, `DISTANCE`, `STEP`, `AXIS` | Optional overrides of the preset (`None` = preset) |
 
    Then run `python render_tiles.py`. Each block is a 740x740 image (2x2 crops of 370 px)
-   saved at `tiles/<map>/<map>_block_<row>_<col>.png`. The HUD is hidden and fog turned off
-   while rendering; both are restored and the free camera turned off at the end.
+   saved at `tiles/<map>/<map>_block_<row>_<col>.png`. The HUD is hidden, fog turned off and
+   the game clock frozen while rendering; all three are restored and the free camera turned off
+   at the end.
 
 2. **Stitch map**: set `MAP` in `build_map.py` and run `python build_map.py`. The block range
    and tile size come from the tile files. Output goes to `complete_maps/`: `<map>.png`,

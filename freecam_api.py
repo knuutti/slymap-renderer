@@ -67,3 +67,7 @@ def set_hud(hidden):
 
 def set_fog(off):
     return get("/fog", off=int(off))
+
+
+def set_clock(frozen):
+    return get("/clock", frozen=int(frozen))
