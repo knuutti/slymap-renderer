@@ -31,6 +31,7 @@ Outside the code:
    | `MAP` | Output folder name under `tiles/` |
    | `ROWS`, `COLS` | Inclusive block ranges. Rows go down the image, columns right |
    | `FOV`, `DISTANCE`, `STEP`, `AXIS` | Optional overrides of the preset (`None` = preset) |
+   | `ORTHO`, `ORTHO_MARGIN`, `NEAR`, `FAR` | Orthographic camera (Sly 4), see [Orthographic mode](#orthographic-mode) |
 
    Then run `python render_tiles.py`. Each block is a 740x740 image (2x2 crops of 370 px)
    saved at `tiles/<map>/<map>_block_<row>_<col>.png`. The HUD is hidden, fog turned off and
@@ -53,6 +54,24 @@ through the origin:
 - **Side view** (`AXIS` a horizontal axis): pitch 0, looking along +`AXIS`, rows going down.
 
 In Sly 4 / Hackpack the camera's far distance is set to `2 * DISTANCE` so the map isn't clipped.
+
+## Orthographic mode
+
+Sly 4's engine can draw a view orthographically, and SluMAN's camera API exposes it as `ortho=`
+(the height the view shows, in world units) and `near=`. With `ORTHO = True` the camera is
+orthographic: heights no longer shift anything, so a block is one shot of the whole frame minus
+`ORTHO_MARGIN` px at each edge (1240x680 at 1280x720) instead of 2x2 crops of 370 px, about 6x
+fewer shots for the same area. The scale stays the preset's `step` world units per 370 px.
+
+- `DISTANCE` is how far above the map plane the camera sits: put it just above the highest point,
+  so the game draws everything up close. Everything from `NEAR` to `FAR` in front of the camera is
+  drawn, so set `FAR` to reach the lowest point (`None` = `2 * DISTANCE`).
+- Tiles aren't square, so block indices cover a different area than perspective tiles. The
+  console prints the world size of a block at the start; use a separate `MAP` folder.
+- The OBS output must show the game's whole frame at its own aspect ratio (no bars or cropping),
+  since the frame's height is what the ortho height is set to. Check with `preview`.
+- SluMAN keeps `ortho` set until it's set to 0 (`end_session` does that) or SluMAN restarts.
+- Not in Sly 4's hacking minigames, nor Sly 1-3 or the Hackpack.
 
 ## Presets and calibration
 
