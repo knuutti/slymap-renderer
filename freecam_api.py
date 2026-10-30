@@ -49,12 +49,17 @@ def supports_far():
     return any("far=" in r for r in info()["requests"])
 
 
+def supports_ortho():
+    return any("ortho=" in r for r in info()["requests"])
+
+
 def get_camera():
     return get("/camera")
 
 
-def set_camera(x, y, z, yaw, pitch, fov, far=None):
-    return get("/camera/set", x=x, y=y, z=z, yaw=yaw, pitch=pitch, fov=fov, far=far)
+def set_camera(x, y, z, yaw, pitch, fov, far=None, ortho=None, near=None):
+    """ortho: world units the view shows top to bottom, 0 for perspective (Sly 4)."""
+    return get("/camera/set", x=x, y=y, z=z, yaw=yaw, pitch=pitch, fov=fov, far=far, ortho=ortho, near=near)
 
 
 def camera_off():

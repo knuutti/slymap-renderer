@@ -29,6 +29,15 @@ DISTANCE = None          # camera distance from the map plane
 STEP = None              # world units per 370 px crop
 AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
 
+# Orthographic camera (every game, needs SluMAN with the camera API's ortho=). A block is then one
+# shot of nearly the whole frame instead of 2x2 centre crops, and heights don't shift anything.
+# The camera sits DISTANCE from the map plane, so put it just above the highest point. The scale
+# stays STEP world units per 370 px.
+ORTHO = False
+ORTHO_MARGIN = 20        # px left out at each edge of the frame
+NEAR = None              # near distance in ortho mode. None = the game's
+FAR = None               # far distance in games that have one. None = 2 * DISTANCE
+
 CAPTURE_DEVICE = 1      # OpenCV device index of the OBS Virtual Camera
 CAPTURE_WIDTH, CAPTURE_HEIGHT = 1280, 720
 
@@ -37,7 +46,7 @@ CAPTURE_WIDTH, CAPTURE_HEIGHT = 1280, 720
 ROOT = os.path.dirname(os.path.abspath(__file__))
 TILES_DIR = os.path.join(ROOT, 'tiles')
 
-CROP = 370               # px taken from the centre of each frame; a tile is 2x2 crops
+CROP = 370               # px taken from the centre of each frame in perspective; a tile is 2x2 crops
 SETTLE_DELAY = 0.2       # s to wait after the API confirms the move before reading frames
 SETTLE_TIMEOUT = 1.0     # s to wait for a new, still frame before using the latest one
 CHANGED_DIFF = 2.0       # mean pixel difference that counts as "the view moved"
@@ -58,7 +67,8 @@ def resolve_settings(frame_height):
     axis = AXIS if AXIS is not None else preset.axis
     if STEP is not None:
         step = STEP
-    elif preset.step is not None and FOV is None and DISTANCE is None:
+    elif preset.step is not None and (ORTHO or (FOV is None and DISTANCE is None)):
+        # In ortho mode the scale doesn't depend on the camera, so the preset's resolution is kept
         step = preset.step
     else:
         # Assumes fov is vertical: the frame's height covers 2 * distance * tan(fov / 2)
@@ -101,21 +111,43 @@ class Renderer:
         self.yaw, self.pitch = view_angles(self.up, axis)
         self.forward, self.right, self.down = view_basis(self.up, self.yaw, self.pitch)
         if freecam_api.supports_far():
-            self.far = self.distance * 2
+            self.far = FAR if FAR is not None else self.distance * 2
+        self.ortho = None
+        self.near = None
+        if ORTHO:
+            if not freecam_api.supports_ortho():
+                raise RuntimeError("This game's free camera can't be orthographic (or SluMAN is too old for ortho=)")
+            units_per_px = self.step / CROP
+            # The frame shows the ortho height top to bottom; the width follows the game's aspect ratio
+            self.ortho = CAPTURE_HEIGHT * units_per_px
+            self.near = NEAR
+            self.shot_h = CAPTURE_HEIGHT - 2 * ORTHO_MARGIN
+            self.shot_w = CAPTURE_WIDTH - 2 * ORTHO_MARGIN
+            self.shots = 1
+            self.row_step = self.shot_h * units_per_px
+            self.col_step = self.shot_w * units_per_px
+        else:
+            self.shot_h = self.shot_w = CROP
+            self.shots = 2
+            self.row_step = self.col_step = self.step
         self.prev_crop = None
         print(f"{GAME.name} (up {self.up}): fov {self.fov}, distance {self.distance}, step {self.step:.2f}, "
               f"yaw {self.yaw}, pitch {self.pitch}")
+        if self.ortho:
+            print(f"Orthographic: {self.ortho:.2f} units top to bottom, near {self.near}, far {self.far}")
+        print(f"A block is {self.shots * self.shot_w}x{self.shots * self.shot_h} px, "
+              f"{self.shots * self.col_step:.2f} x {self.shots * self.row_step:.2f} world units")
 
     def shot_position(self, row, col):
-        """Camera position for shot (row, col) in crop units: a block is 2x2 shots."""
-        point = row * self.step * self.down + col * self.step * self.right
+        """Camera position for shot (row, col): a block is shots x shots of them."""
+        point = row * self.row_step * self.down + col * self.col_step * self.right
         return point - self.forward * self.distance
 
     def place_camera(self, row, col):
         x, y, z = self.shot_position(row, col)
         for attempt in range(SET_RETRIES):
             try:
-                cam = freecam_api.set_camera(x, y, z, self.yaw, self.pitch, self.fov, self.far)
+                cam = freecam_api.set_camera(x, y, z, self.yaw, self.pitch, self.fov, self.far, self.ortho, self.near)
                 if cam["on"] and all(abs(cam[k] - v) <= max(1.0, 1e-5 * abs(v))
                                      for k, v in (("x", x), ("y", y), ("z", z))):
                     return
@@ -129,8 +161,9 @@ class Renderer:
         ok, frame = self.capture.read()
         if not ok:
             raise RuntimeError("Capture device returned no frame (is the OBS Virtual Camera running?)")
-        cy, cx = frame.shape[0] // 2, frame.shape[1] // 2
-        return frame[cy - CROP // 2:cy + CROP // 2, cx - CROP // 2:cx + CROP // 2]
+        top = (frame.shape[0] - self.shot_h) // 2
+        left = (frame.shape[1] - self.shot_w) // 2
+        return frame[top:top + self.shot_h, left:left + self.shot_w]
 
     def drain_buffer(self):
         """Throw away frames the capture backend buffered before the camera moved."""
@@ -175,15 +208,16 @@ class Renderer:
 
     def render_block(self, bix, biy):
         os.makedirs(f'{TILES_DIR}/{MAP}', exist_ok=True)
-        img = np.zeros((2 * CROP, 2 * CROP, 3), dtype=np.uint8)
-        for x_idx in range(0, 2):
-            for y_idx in range(0, 2):
-                self.place_camera(2 * bix + x_idx, 2 * biy + y_idx)
-                img[x_idx*CROP:(x_idx+1)*CROP, y_idx*CROP:(y_idx+1)*CROP] = self.settled_crop()
+        n, h, w = self.shots, self.shot_h, self.shot_w
+        img = np.zeros((n * h, n * w, 3), dtype=np.uint8)
+        for x_idx in range(n):
+            for y_idx in range(n):
+                self.place_camera(n * bix + x_idx, n * biy + y_idx)
+                img[x_idx*h:(x_idx+1)*h, y_idx*w:(y_idx+1)*w] = self.settled_crop()
         cv.imwrite(f'{TILES_DIR}/{MAP}/{MAP}_block_{bix}_{biy}.png', img)
 
     def move_to_block(self, bix, biy):
-        self.place_camera(2 * bix, 2 * biy)
+        self.place_camera(self.shots * bix, self.shots * biy)
 
 
 def start_session():
@@ -197,8 +231,10 @@ def start_session():
 
 
 def end_session():
+    # SluMAN keeps ortho set until it's turned off, also for the Camera tab
+    reset_ortho = (lambda: freecam_api.get("/camera/set", ortho=0)) if ORTHO else (lambda: None)
     for call in (lambda: freecam_api.set_hud(False), lambda: freecam_api.set_fog(False),
-                 lambda: freecam_api.set_clock(False), freecam_api.camera_off):
+                 lambda: freecam_api.set_clock(False), reset_ortho, freecam_api.camera_off):
         try:
             call()
         except ApiError as e:

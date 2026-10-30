@@ -64,31 +64,32 @@ def build_map(curr_map=MAP):
         return
     xmin, xmax = min(b[0] for b in blocks), max(b[0] for b in blocks)
     ymin, ymax = min(b[1] for b in blocks), max(b[1] for b in blocks)
-    tile = cv.imread(f'{TILES_DIR}/{curr_map}/{curr_map}_block_{blocks[0][0]}_{blocks[0][1]}.png').shape[0]
-    print(f"Blocks x={xmin}..{xmax}, y={ymin}..{ymax}, tile size {tile}px")
+    # Orthographic tiles are as wide as the frame, so not square
+    tile_h, tile_w = cv.imread(f'{TILES_DIR}/{curr_map}/{curr_map}_block_{blocks[0][0]}_{blocks[0][1]}.png').shape[:2]
+    print(f"Blocks x={xmin}..{xmax}, y={ymin}..{ymax}, tile size {tile_w}x{tile_h}px")
 
     rows = (xmax+1) - xmin
-    ysize = ((ymax+1) - ymin) * tile
+    ysize = ((ymax+1) - ymin) * tile_w
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     # The map is built and written one row of blocks at a time, along with its downscaled versions
     writers = {}
     missing_blocks_str = ""
     try:
-        writers[''] = PngWriter(f'{OUTPUT_DIR}/{curr_map}.png', ysize, rows * tile)
+        writers[''] = PngWriter(f'{OUTPUT_DIR}/{curr_map}.png', ysize, rows * tile_h)
         for suffix, factor in DOWNSCALES.items():
-            writers[suffix] = PngWriter(f'{OUTPUT_DIR}/{curr_map}_{suffix}.png', ysize // factor, rows * (tile // factor))
+            writers[suffix] = PngWriter(f'{OUTPUT_DIR}/{curr_map}_{suffix}.png', ysize // factor, rows * (tile_h // factor))
         for bix in range(xmin, xmax+1):
-            strip = np.zeros((tile, ysize, 3), dtype=np.uint8)
+            strip = np.zeros((tile_h, ysize, 3), dtype=np.uint8)
             for biy in range(ymin, ymax+1):
                 # check if file exists
                 if not os.path.exists(f'{TILES_DIR}/{curr_map}/{curr_map}_block_{bix}_{biy}.png'):
                     missing_blocks_str += f"({bix},{biy}),"
                     continue
                 img_part = cv.imread(f'{TILES_DIR}/{curr_map}/{curr_map}_block_{bix}_{biy}.png')
-                strip[:, (biy-ymin)*tile:(biy-ymin+1)*tile] = img_part
+                strip[:, (biy-ymin)*tile_w:(biy-ymin+1)*tile_w] = img_part
             writers[''].write_rows(strip)
             for suffix, factor in DOWNSCALES.items():
-                writers[suffix].write_rows(cv.resize(strip, (ysize // factor, tile // factor), interpolation=cv.INTER_AREA))
+                writers[suffix].write_rows(cv.resize(strip, (ysize // factor, tile_h // factor), interpolation=cv.INTER_AREA))
             print(f"Row {bix - xmin + 1}/{rows} written")
     except BaseException:
         for writer in writers.values():
