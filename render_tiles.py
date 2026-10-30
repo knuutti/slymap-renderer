@@ -29,7 +29,7 @@ DISTANCE = None          # camera distance from the map plane
 STEP = None              # world units per 370 px crop
 AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
 
-# Orthographic camera (Sly 2, Sly 4 and the Hackpack, needs SluMAN with the camera API's ortho=). A block is then one
+# Orthographic camera (Sly 2, Sly 3, Sly 4 and the Hackpack, needs SluMAN with the camera API's ortho=). A block is then one
 # shot of nearly the whole frame instead of 2x2 centre crops, and heights don't shift anything.
 # The camera sits DISTANCE from the map plane, so put it just above the highest point. The scale
 # stays STEP world units per 370 px.
