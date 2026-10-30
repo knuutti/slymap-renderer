@@ -100,5 +100,40 @@ def build_map(curr_map=MAP):
     if missing_blocks_str:
         print(f"Missing blocks found: {missing_blocks_str[:-1]}")
 
+def build_tile_index(curr_map=MAP, cell=160):
+    """Writes a low-res map with a grid and each tile's (bix,biy) label, for finding tiles to re-render."""
+    blocks = find_blocks(curr_map)
+    if not blocks:
+        print(f"No tiles found in {TILES_DIR}/{curr_map}")
+        return
+    xmin, xmax = min(b[0] for b in blocks), max(b[0] for b in blocks)
+    ymin, ymax = min(b[1] for b in blocks), max(b[1] for b in blocks)
+    # Same layout as build_map: bix runs down the rows, biy across the columns
+    img = np.full(((xmax+1-xmin) * cell, (ymax+1-ymin) * cell, 3), 40, dtype=np.uint8)
+    for bix, biy in blocks:
+        # Reduced decode keeps reading the full-res tiles fast
+        tile = cv.imread(f'{TILES_DIR}/{curr_map}/{curr_map}_block_{bix}_{biy}.png', cv.IMREAD_REDUCED_COLOR_4)
+        y0, x0 = (bix-xmin) * cell, (biy-ymin) * cell
+        img[y0:y0+cell, x0:x0+cell] = cv.resize(tile, (cell, cell), interpolation=cv.INTER_AREA)
+
+    present = set(blocks)
+    font, scale, thick = cv.FONT_HERSHEY_SIMPLEX, cell / 320, max(1, cell // 120)
+    for bix in range(xmin, xmax+1):
+        for biy in range(ymin, ymax+1):
+            y0, x0 = (bix-xmin) * cell, (biy-ymin) * cell
+            cv.rectangle(img, (x0, y0), (x0+cell-1, y0+cell-1), (0, 255, 255), 1)
+            label = f"{bix},{biy}"
+            color = (255, 255, 255) if (bix, biy) in present else (80, 80, 255)
+            # Dark outline under the text so it stays readable on any background
+            cv.putText(img, label, (x0+4, y0+4+int(22*scale)), font, scale, (0, 0, 0), thick+2, cv.LINE_AA)
+            cv.putText(img, label, (x0+4, y0+4+int(22*scale)), font, scale, color, thick, cv.LINE_AA)
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    path = f'{OUTPUT_DIR}/{curr_map}_index.png'
+    if not cv.imwrite(path, img):
+        raise OSError(f"Can't write {path}. Is it open in an image viewer?")
+    print(f"Tile index written to {path}")
+
 if __name__ == "__main__":
     build_map()
+    build_tile_index()
