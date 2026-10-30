@@ -71,7 +71,7 @@ fewer shots for the same area. The scale stays the preset's `step` world units p
 - The OBS output must show the game's whole frame at its own aspect ratio (no bars or cropping),
   since the frame's height is what the ortho height is set to. Check with `preview`.
 - SluMAN keeps `ortho` set until it's set to 0 (`end_session` does that) or SluMAN restarts.
-- Not in Sly 4's hacking minigames, nor Sly 1-3 or the Hackpack.
+- Not in Sly 1-3 or the Hackpack.
 
 ## Presets and calibration
 
