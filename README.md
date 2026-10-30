@@ -72,7 +72,9 @@ fewer shots for the same area. The scale stays the preset's `step` world units p
 - The OBS output must show the game's whole frame at its own aspect ratio (no bars or cropping),
   since the frame's height is what the ortho height is set to. Check with `preview`.
 - SluMAN keeps `ortho` set until it's set to 0 (`end_session` does that) or SluMAN restarts.
-- Every game. In Sly 1-3 the game's culling cone is opened to
+- In Sly 1 set `NEAR` to about the camera's height above the highest point: the game's culling is fitted to
+  the frame from `NEAR` down (from half the ortho height when it's `None`), and opening it further crashes Sly 1.
+- Every game. In Sly 2-3 the game's culling cone is opened to
   everything in front of the camera while orthographic, so everything below it within `FAR` is drawn.
 
 ## Presets and calibration
