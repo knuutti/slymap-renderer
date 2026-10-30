@@ -31,7 +31,7 @@ Outside the code:
    | `MAP` | Output folder name under `tiles/` |
    | `ROWS`, `COLS` | Inclusive block ranges. Rows go down the image, columns right |
    | `FOV`, `DISTANCE`, `STEP`, `AXIS` | Optional overrides of the preset (`None` = preset) |
-   | `ORTHO`, `ORTHO_MARGIN`, `NEAR`, `FAR` | Orthographic camera (Sly 4), see [Orthographic mode](#orthographic-mode) |
+   | `ORTHO`, `ORTHO_MARGIN`, `NEAR`, `FAR` | Orthographic camera (Sly 4, Hackpack), see [Orthographic mode](#orthographic-mode) |
 
    Then run `python render_tiles.py`. Each block is a 740x740 image (2x2 crops of 370 px)
    saved at `tiles/<map>/<map>_block_<row>_<col>.png`. The HUD is hidden, fog turned off and
@@ -57,7 +57,7 @@ In Sly 4 / Hackpack the camera's far distance is set to `2 * DISTANCE` so the ma
 
 ## Orthographic mode
 
-Sly 4's engine can draw a view orthographically, and SluMAN's camera API exposes it as `ortho=`
+Sly 4's engine (and the Hackpack's) can draw a view orthographically, and SluMAN's camera API exposes it as `ortho=`
 (the height the view shows, in world units) and `near=`. With `ORTHO = True` the camera is
 orthographic: heights no longer shift anything, so a block is one shot of the whole frame minus
 `ORTHO_MARGIN` px at each edge (1240x680 at 1280x720) instead of 2x2 crops of 370 px, about 6x
@@ -71,7 +71,7 @@ fewer shots for the same area. The scale stays the preset's `step` world units p
 - The OBS output must show the game's whole frame at its own aspect ratio (no bars or cropping),
   since the frame's height is what the ortho height is set to. Check with `preview`.
 - SluMAN keeps `ortho` set until it's set to 0 (`end_session` does that) or SluMAN restarts.
-- Not in Sly 1-3 or the Hackpack.
+- Sly 4 and the Hackpack only, not Sly 1-3.
 
 ## Presets and calibration
 
