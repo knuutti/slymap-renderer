@@ -1,6 +1,6 @@
+import argparse
 import math
 import os
-import sys
 import time
 
 import cv2 as cv
@@ -23,20 +23,24 @@ COLS = (11, 19)
 # list pasted between the brackets: [(1,2),(3,4)]. None = use ROWS and COLS.
 BLOCKS = None
 
-# None = use the game's preset from games.py
+# The camera. None = the game's preset from games.py. The command line overrides these, e.g.
+#   python render_tiles.py --height 20000 --view 1500
+HEIGHT = None            # how far above the map plane the camera sits: just above the highest point
+VIEW = None              # world units the frame shows top to bottom: how much each shot captures,
+                         # and the map's scale (VIEW / 720 units per px)
+NEAR = None              # near distance. None = the game's (Sly 1: see the README)
+FAR = None               # far distance in games that have one. None = 2 * HEIGHT
+AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
+
+# Orthographic camera (needs SluMAN with the camera API's ortho=): heights don't shift anything,
+# and a block is one shot of nearly the whole frame.
+ORTHO = True
+ORTHO_MARGIN = 20        # px left out at each edge of the frame
+
+# Perspective camera only (ORTHO = False). A block is 2x2 crops of 370 px from the frame's centre.
 FOV = None               # degrees
 DISTANCE = None          # camera distance from the map plane
 STEP = None              # world units per 370 px crop
-AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
-
-# Orthographic camera (every game, needs SluMAN with the camera API's ortho=). A block is then one
-# shot of nearly the whole frame instead of 2x2 centre crops, and heights don't shift anything.
-# The camera sits DISTANCE from the map plane, so put it just above the highest point. The scale
-# stays STEP world units per 370 px.
-ORTHO = False
-ORTHO_MARGIN = 20        # px left out at each edge of the frame
-NEAR = None              # near distance in ortho mode. None = the game's
-FAR = None               # far distance in games that have one. None = 2 * DISTANCE
 
 CAPTURE_DEVICE = 1      # OpenCV device index of the OBS Virtual Camera
 CAPTURE_WIDTH, CAPTURE_HEIGHT = 1280, 720
@@ -61,19 +65,25 @@ START_DELAY = 0.5        # s to wait at the first block's position before the fi
 
 
 def resolve_settings(frame_height):
+    """Field of view, camera distance, world units per 370 px, axis, and the orthographic view
+    height (None in perspective)."""
     preset = PRESETS[GAME]
     fov = FOV if FOV is not None else preset.fov
-    distance = DISTANCE if DISTANCE is not None else preset.distance
     axis = AXIS if AXIS is not None else preset.axis
+    if ORTHO:
+        # The scale is the view's alone: the camera's distance doesn't change it
+        distance = HEIGHT if HEIGHT is not None else preset.height
+        view = VIEW if VIEW is not None else preset.view
+        return fov, distance, view * CROP / frame_height, axis, view
+    distance = DISTANCE if DISTANCE is not None else preset.distance
     if STEP is not None:
         step = STEP
-    elif preset.step is not None and (ORTHO or (FOV is None and DISTANCE is None)):
-        # In ortho mode the scale doesn't depend on the camera, so the preset's resolution is kept
+    elif preset.step is not None and FOV is None and DISTANCE is None:
         step = preset.step
     else:
         # Assumes fov is vertical: the frame's height covers 2 * distance * tan(fov / 2)
         step = 2 * distance * math.tan(math.radians(fov) / 2) * CROP / frame_height
-    return fov, distance, step, axis
+    return fov, distance, step, axis, None
 
 
 def view_basis(up, yaw, pitch):
@@ -107,7 +117,7 @@ class Renderer:
         self.capture = capture
         self.up = freecam_api.up_axis()
         self.far = None
-        self.fov, self.distance, self.step, axis = resolve_settings(CAPTURE_HEIGHT)
+        self.fov, self.distance, self.step, axis, view = resolve_settings(CAPTURE_HEIGHT)
         self.yaw, self.pitch = view_angles(self.up, axis)
         self.forward, self.right, self.down = view_basis(self.up, self.yaw, self.pitch)
         if freecam_api.supports_far():
@@ -117,9 +127,9 @@ class Renderer:
         if ORTHO:
             if not freecam_api.supports_ortho():
                 raise RuntimeError("This game's free camera can't be orthographic (or SluMAN is too old for ortho=)")
-            units_per_px = self.step / CROP
+            units_per_px = view / CAPTURE_HEIGHT
             # The frame shows the ortho height top to bottom; the width follows the game's aspect ratio
-            self.ortho = CAPTURE_HEIGHT * units_per_px
+            self.ortho = view
             self.near = NEAR
             self.shot_h = CAPTURE_HEIGHT - 2 * ORTHO_MARGIN
             self.shot_w = CAPTURE_WIDTH - 2 * ORTHO_MARGIN
@@ -131,10 +141,13 @@ class Renderer:
             self.shots = 2
             self.row_step = self.col_step = self.step
         self.prev_crop = None
-        print(f"{GAME.name} (up {self.up}): fov {self.fov}, distance {self.distance}, step {self.step:.2f}, "
-              f"yaw {self.yaw}, pitch {self.pitch}")
         if self.ortho:
-            print(f"Orthographic: {self.ortho:.2f} units top to bottom, near {self.near}, far {self.far}")
+            print(f"{GAME.name} (up {self.up}), orthographic: height {self.distance}, view {self.ortho} units "
+                  f"top to bottom ({self.ortho / CAPTURE_HEIGHT:.4f} per px), near {self.near}, far {self.far}, "
+                  f"yaw {self.yaw}, pitch {self.pitch}")
+        else:
+            print(f"{GAME.name} (up {self.up}): fov {self.fov}, distance {self.distance}, step {self.step:.2f}, "
+                  f"yaw {self.yaw}, pitch {self.pitch}")
         print(f"A block is {self.shots * self.shot_w}x{self.shots * self.shot_h} px, "
               f"{self.shots * self.col_step:.2f} x {self.shots * self.row_step:.2f} world units")
 
@@ -281,8 +294,41 @@ def preview(bix, biy):
     print("Camera left in place. Run without arguments to render, or turn the camera off in SluMAN.")
 
 
+def parse_args():
+    """Overrides the settings above from the command line, so the camera can be tuned without
+    editing the file."""
+    global GAME, ORTHO
+    parser = argparse.ArgumentParser(description="Render map tiles through SluMAN's free camera.")
+    parser.add_argument("preview", nargs="*", metavar="preview ROW COL",
+                        help="move the camera to a block without capturing")
+    parser.add_argument("--game", choices=[g.value for g in Game], help="the game (picks its preset)")
+    parser.add_argument("--map", help="output folder under tiles/")
+    parser.add_argument("--rows", nargs=2, type=int, metavar=("FIRST", "LAST"), help="inclusive block rows")
+    parser.add_argument("--cols", nargs=2, type=int, metavar=("FIRST", "LAST"), help="inclusive block columns")
+    parser.add_argument("--height", type=float, help="how far above the map plane the camera sits")
+    parser.add_argument("--view", type=float, help="world units the frame shows top to bottom")
+    parser.add_argument("--near", type=float, help="near distance")
+    parser.add_argument("--far", type=float, help="far distance")
+    parser.add_argument("--perspective", action="store_true", help="perspective camera instead of orthographic")
+    args = parser.parse_args()
+    if args.preview and (len(args.preview) != 3 or args.preview[0] != "preview"):
+        parser.error("use: preview ROW COL")
+    for name, value in (("MAP", args.map), ("HEIGHT", args.height), ("VIEW", args.view),
+                        ("NEAR", args.near), ("FAR", args.far),
+                        ("ROWS", tuple(args.rows) if args.rows else None),
+                        ("COLS", tuple(args.cols) if args.cols else None)):
+        if value is not None:
+            globals()[name] = value
+    if args.game:
+        GAME = Game(args.game)
+    if args.perspective:
+        ORTHO = False
+    return (int(args.preview[1]), int(args.preview[2])) if args.preview else None
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 4 and sys.argv[1] == "preview":
-        preview(int(sys.argv[2]), int(sys.argv[3]))
+    block = parse_args()
+    if block is not None:
+        preview(*block)
     else:
         main()
