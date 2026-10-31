@@ -1,7 +1,7 @@
 # slymap-renderer
 
 Renders map images of Sly Cooper levels. The game's free camera is moved block by block
-through SluMAN's camera script API, each view is captured from the OBS Virtual Camera with
+through [SluMAN's](https://github.com/knuutti/SluMAN) camera script API, each view is captured from the OBS Virtual Camera with
 OpenCV, and the tiles are stitched into one large map.
 
 ## Setup
