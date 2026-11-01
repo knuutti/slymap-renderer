@@ -12,8 +12,8 @@ from games import Game, PRESETS
 
 # --- Settings ---------------------------------------------------------------
 
-GAME = Game.SLY4
-MAP = "japan"            # name of the output folder under tiles/
+GAME = Game.SYSTEMCRACKER
+MAP = "HP_SC01"            # name of the output folder under tiles/
 
 # Inclusive block ranges. Rows go down the image, columns go right.
 # Top-down in Sly 1-3 that's rows = +X, columns = +Y.
@@ -29,8 +29,11 @@ HEIGHT = None            # how far above the map plane the camera sits: just abo
 VIEW = None              # world units the frame shows top to bottom: how much each shot captures,
                          # and the map's scale (VIEW / 720 units per px)
 NEAR = None              # near distance. None = the game's (Sly 1: see the README)
-FAR = None               # far distance in games that have one. None = 2 * HEIGHT
-AXIS = None              # "X", "Y" or "Z" the camera sits back along. None = game's up axis (top-down)
+FAR = 60               # far distance in games that have one. None = 2 * HEIGHT
+AXIS = None              # "X", "Y" or "Z" to look along +axis, "-X", "-Y" or "-Z" to look along -axis
+                         # (side views, pitch 0). None = the game's up axis (top-down)
+YAW = None               # degrees, turns the view about the axis it looks along (top-down: which way
+                         # is up in the tiles). None = the preset's, or the axis' default
 
 # Orthographic camera (needs SluMAN with the camera API's ortho=): heights don't shift anything,
 # and a block is one shot of nearly the whole frame.
@@ -100,15 +103,22 @@ def view_basis(up, yaw, pitch):
 
 
 def view_angles(up, axis):
-    """Yaw and pitch for a camera sitting back along `axis`, looking at the map plane."""
+    """Yaw and pitch for a camera looking along `axis` ("Z", "-Z", ...) at the map plane."""
     if axis is None or axis == up:
         # Top-down. Sly 1-3: rows = +X, columns = +Y, as in the existing tiles.
         return (180.0 if up == "Z" else -90.0), -90.0
-    # Side view, looking along +axis with the up axis up
+    axis = axis.upper()
+    flip = axis.startswith("-")
+    axis = axis.lstrip("+-")
+    # Side view, looking along +axis (or -axis) with the up axis up
     yaws = {("Z", "X"): 0.0, ("Z", "Y"): 90.0, ("Y", "X"): 90.0, ("Y", "Z"): 0.0}
     if (up, axis) not in yaws:
         raise ValueError(f"Axis {axis} doesn't work with up axis {up}")
-    return yaws[(up, axis)], 0.0
+    yaw = yaws[(up, axis)]
+    if flip:
+        # Turn around: the camera sits on the +axis side. Kept in [-180, 180)
+        yaw = (yaw + 180.0 + 180.0) % 360.0 - 180.0
+    return yaw, 0.0
 
 
 class Renderer:
@@ -119,6 +129,9 @@ class Renderer:
         self.far = None
         self.fov, self.distance, self.step, axis, view = resolve_settings(CAPTURE_HEIGHT)
         self.yaw, self.pitch = view_angles(self.up, axis)
+        yaw = YAW if YAW is not None else PRESETS[GAME].yaw
+        if yaw is not None:
+            self.yaw = float(yaw)
         self.forward, self.right, self.down = view_basis(self.up, self.yaw, self.pitch)
         if freecam_api.supports_far():
             self.far = FAR if FAR is not None else self.distance * 2
@@ -309,12 +322,14 @@ def parse_args():
     parser.add_argument("--view", type=float, help="world units the frame shows top to bottom")
     parser.add_argument("--near", type=float, help="near distance")
     parser.add_argument("--far", type=float, help="far distance")
+    parser.add_argument("--axis", help='axis to look along for a side view: X, Y, Z, -X, -Y or -Z')
+    parser.add_argument("--yaw", type=float, help="camera yaw in degrees (top-down: rotates the tiles)")
     parser.add_argument("--perspective", action="store_true", help="perspective camera instead of orthographic")
     args = parser.parse_args()
     if args.preview and (len(args.preview) != 3 or args.preview[0] != "preview"):
         parser.error("use: preview ROW COL")
     for name, value in (("MAP", args.map), ("HEIGHT", args.height), ("VIEW", args.view),
-                        ("NEAR", args.near), ("FAR", args.far),
+                        ("NEAR", args.near), ("FAR", args.far), ("AXIS", args.axis), ("YAW", args.yaw),
                         ("ROWS", tuple(args.rows) if args.rows else None),
                         ("COLS", tuple(args.cols) if args.cols else None)):
         if value is not None:

@@ -34,6 +34,7 @@ Outside the code:
    | `VIEW` | World units the frame shows top to bottom: how much each shot captures, and the map's scale (`None` = preset) |
    | `NEAR`, `FAR` | Near and far distance (`None` = the game's near, `FAR` = `2 * HEIGHT`) |
    | `AXIS` | The axis the camera sits back along (`None` = top-down) |
+   | `YAW` | Camera yaw in degrees, overriding the axis' default (`None` = preset) |
    | `ORTHO`, `ORTHO_MARGIN` | Orthographic camera, on by default, see [Orthographic mode](#orthographic-mode) |
    | `FOV`, `DISTANCE`, `STEP` | Perspective camera only (`ORTHO = False`) |
 
@@ -57,6 +58,13 @@ Outside the code:
    and tile size come from the tile files. Output goes to `complete_maps/`: `<map>.png`,
    `<map>_small.png` (1/4 size) and `<map>_xsmall.png` (1/20 size).
 
+   `--map` overrides `MAP`, and `--row MIN MAX` / `--col MIN MAX` limit the map to tiles in those
+   inclusive ranges, ignoring the rest:
+
+   ```
+   python build_map.py --row -5 5 --col 5 8
+   ```
+
 `tiles/` and `complete_maps/` are git-ignored and only kept locally.
 
 ## Views
@@ -68,6 +76,11 @@ through the origin:
 - **Top-down** (`AXIS = None`, the game's up axis): pitch -90. Sly 1-3 have Z up, so rows are
   +X and columns +Y, as in the existing tiles. Sly 4 / Hackpack have Y up.
 - **Side view** (`AXIS` a horizontal axis): pitch 0, looking along +`AXIS`, rows going down.
+  Prefix it with `-` (`"-Z"`) to look along -`AXIS` instead, with the camera on the + side. The
+  Alter Ego hacks use `"-Z"`: yaw -180 in Sly 4 / Hackpack, Z the distance to the field.
+- **`YAW`** (`--yaw`, preset `yaw`) overrides the yaw the axis picks, keeping its pitch. Top-down,
+  it turns the tiles: Sly 4 / Hackpack default to yaw -90, and the Sparkrunner preset uses
+  `yaw=0` (yaw 0, pitch -90). `-Y` isn't a valid `AXIS` there: the up axis means top-down.
 
 In Sly 2, Sly 4 and the Hackpack the camera's far distance is set to `2 * HEIGHT` (`2 * DISTANCE` in
 perspective) so the map isn't clipped.

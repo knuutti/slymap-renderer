@@ -1,3 +1,4 @@
+import argparse
 import cv2 as cv
 import numpy as np
 import os
@@ -5,7 +6,7 @@ import re
 import struct
 import zlib
 
-MAP = "japan"
+MAP = "HP_SC01"
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 TILES_DIR = os.path.join(ROOT, 'tiles')
@@ -47,18 +48,24 @@ class PngWriter:
         self._chunk(b'IEND', b'')
         self.file.close()
 
-def find_blocks(curr_map):
+def find_blocks(curr_map, row_range=None, col_range=None):
+    """Returns (row, col) of every tile, skipping those outside the given inclusive ranges."""
     pattern = re.compile(rf'^{re.escape(curr_map)}_block_(-?\d+)_(-?\d+)\.png$')
     blocks = []
     for name in os.listdir(f'{TILES_DIR}/{curr_map}'):
         match = pattern.match(name)
         if match:
-            blocks.append((int(match.group(1)), int(match.group(2))))
+            bix, biy = int(match.group(1)), int(match.group(2))
+            if row_range and not row_range[0] <= bix <= row_range[1]:
+                continue
+            if col_range and not col_range[0] <= biy <= col_range[1]:
+                continue
+            blocks.append((bix, biy))
     return blocks
 
-def build_map(curr_map=MAP):
+def build_map(curr_map=MAP, row_range=None, col_range=None):
 
-    blocks = find_blocks(curr_map)
+    blocks = find_blocks(curr_map, row_range, col_range)
     if not blocks:
         print(f"No tiles found in {TILES_DIR}/{curr_map}")
         return
@@ -100,9 +107,9 @@ def build_map(curr_map=MAP):
     if missing_blocks_str:
         print(f"Missing blocks found: {missing_blocks_str[:-1]}")
 
-def build_tile_index(curr_map=MAP, cell=160):
+def build_tile_index(curr_map=MAP, cell=160, row_range=None, col_range=None):
     """Writes a low-res map with a grid and each tile's (bix,biy) label, for finding tiles to re-render."""
-    blocks = find_blocks(curr_map)
+    blocks = find_blocks(curr_map, row_range, col_range)
     if not blocks:
         print(f"No tiles found in {TILES_DIR}/{curr_map}")
         return
@@ -135,5 +142,12 @@ def build_tile_index(curr_map=MAP, cell=160):
     print(f"Tile index written to {path}")
 
 if __name__ == "__main__":
-    build_map()
-    build_tile_index()
+    parser = argparse.ArgumentParser(description="Stitch rendered tiles into a full map.")
+    parser.add_argument('--map', default=MAP)
+    parser.add_argument('--row', nargs=2, type=int, metavar=('MIN', 'MAX'),
+                        help="only use tiles with row in MIN..MAX (inclusive)")
+    parser.add_argument('--col', nargs=2, type=int, metavar=('MIN', 'MAX'),
+                        help="only use tiles with column in MIN..MAX (inclusive)")
+    args = parser.parse_args()
+    build_map(args.map, args.row, args.col)
+    build_tile_index(args.map, row_range=args.row, col_range=args.col)
